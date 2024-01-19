@@ -37,7 +37,57 @@ un mesaj de eroare la STDERR si va opri executia.
 #include <unistd.h>
 #include <sys/wait.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
+    pid_t child1, child2, child3, grandchild1;
+    int pipe_fd[2];
+
+    // a) Creare structura de procese
+    printf("Parent (main) PID: %d\n", getpid());
+
+    if ((child1 = fork()) == 0) {
+        printf("Child1 PID: %d, Parent PID: %d\n", getpid(), getppid());
+        exit(EXIT_SUCCESS);
+    } else {
+        wait(NULL); // Wait for child1 to complete
+        if ((child2 = fork()) == 0) {
+            printf("Child2 PID: %d, Parent PID: %d\n", getpid(), getppid());
+            exit(EXIT_SUCCESS);
+        } else {
+            wait(NULL); // Wait for child2 to complete
+            if ((child3 = fork()) == 0) {
+                printf("Child3 PID: %d, Parent PID: %d\n", getpid(), getppid());
+
+                // d) Creare pipe intre child3 si grandchild1
+                if (pipe(pipe_fd) == -1) {
+                    perror("Error creating pipe");
+                    exit(EXIT_FAILURE);
+                }
+
+                if ((grandchild1 = fork()) == 0) {
+                    printf("Grandchild1 PID: %d, Parent PID: %d\n", getpid(), getppid());
+
+                    // e) Executarea comenzii `pwd -L' fara a crea un proces nou
+                    close(pipe_fd[1]); // Close write end of the pipe
+                    dup2(pipe_fd[0], STDIN_FILENO);
+                    close(pipe_fd[0]); // Close read end of the pipe
+
+                    execlp("pwd", "pwd", "-L", (char *)NULL);
+                    perror("Error executing pwd");
+                    exit(EXIT_FAILURE);
+                } else {
+                    close(pipe_fd[0]); // Close read end of the pipe
+                    dup2(pipe_fd[1], STDOUT_FILENO);
+                    close(pipe_fd[1]); // Close write end of the pipe
+                    wait(NULL); // Wait for grandchild1 to complete
+                }
+
+                // c) Child3 se termina doar dupa ce grandchild1 s-a incheiat
+                exit(EXIT_SUCCESS);
+            } else {
+                wait(NULL); // Wait for child3 to complete
+            }
+        }
+    }
 
     return 0;
 }
